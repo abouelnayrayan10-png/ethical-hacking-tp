@@ -1,7 +1,7 @@
 
 import socket
 
-from protocol import encode_message, decode_message
+from .protocol import encode_message, decode_message
 
 
 class SocketManager:
