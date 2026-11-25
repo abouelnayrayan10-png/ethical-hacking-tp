@@ -40,88 +40,80 @@ def get_users_info():
                 })
 
     except OSError as error:
-        print(f"[-] Erreur de lecture de /etc/passwd : {error}")
+        print(f"[-] Erreur de lecture : {error}")
 
     return users
 
 
-def list_directory(path, max_entries=20):
-    """Liste récursivement les éléments accessibles d'un dossier."""
+def list_directory(path, max_entries=5):
+    """Affiche un échantillon des éléments accessibles."""
 
-    print(f"\n[+] Exploration de : {path}")
+    print(f"\n[+] Exploration : {path}")
 
     count = 0
 
     try:
         for root, directories, files in os.walk(
             path,
-            onerror=lambda error: print(
-                f"[-] Accès refusé : {error.filename}"
-            ),
+            onerror=lambda error: None,
             followlinks=False
         ):
             for name in directories + files:
 
                 if count >= max_entries:
-                    print(f"[!] Limite de {max_entries} éléments atteinte.")
+                    print("[+] Affichage limité.")
                     return
 
                 full_path = os.path.join(root, name)
 
                 try:
                     information = os.lstat(full_path)
+                    permissions = stat.filemode(information.st_mode)
 
-                    if stat.S_ISLNK(information.st_mode):
-                        file_type = "Lien symbolique"
-                    elif stat.S_ISDIR(information.st_mode):
+                    if stat.S_ISDIR(information.st_mode):
                         file_type = "Dossier"
                     elif stat.S_ISREG(information.st_mode):
                         file_type = "Fichier"
+                    elif stat.S_ISLNK(information.st_mode):
+                        file_type = "Lien"
                     else:
                         file_type = "Autre"
 
-                    permissions = stat.filemode(information.st_mode)
-
-                    print(
-                        f"{file_type} | "
-                        f"{permissions} | "
-                        f"{full_path}"
-                    )
-
+                    print(f"{file_type} | {permissions} | {name}")
                     count += 1
 
-                except OSError as error:
-                    print(f"[-] Erreur : {error}")
+                except OSError:
+                    continue
 
-        print(f"[+] Total affiché : {count} éléments")
+        print(f"[+] {count} élément(s) affiché(s)")
 
-    except OSError as error:
-        print(f"[-] Erreur d'exploration : {error}")
+    except OSError:
+        print("[-] Accès impossible.")
 
 
 if __name__ == "__main__":
 
-    information = get_system_info()
+    print("[+] INFORMATIONS SYSTÈME")
 
-    print("[+] Informations système :")
+    information = get_system_info()
 
     for key, value in information.items():
         print(f"{key} : {value}")
 
-    print("\n[+] Comptes utilisateurs Linux :")
+    print("\n[+] COMPTES UTILISATEURS")
 
     users = get_users_info()
 
+    print(f"Nombre de comptes : {len(users)}")
+
     for user in users:
         print(
-            f"Utilisateur : {user['username']} | "
-            f"UID : {user['uid']} | "
-            f"GID : {user['gid']} | "
-            f"Home : {user['home']} | "
-            f"Shell : {user['shell']}"
+            f"{user['username']} | "
+            f"UID: {user['uid']} | "
+            f"GID: {user['gid']}"
         )
 
-    print("\n[+] Exploration des répertoires Linux :")
+    print("\n[+] EXPLORATION DES RÉPERTOIRES")
 
-    list_directory("/home", max_entries=20)
-    list_directory("/root", max_entries=20)
+    list_directory("/home", max_entries=5)
+    list_directory("/root", max_entries=5)
