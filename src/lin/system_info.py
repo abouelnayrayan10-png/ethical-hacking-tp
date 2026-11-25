@@ -104,14 +104,19 @@ if __name__ == "__main__":
 
     users = get_users_info()
 
-    print(f"Nombre de comptes : {len(users)}")
+    print(f"Nombre total de comptes : {len(users)}")
 
     for user in users:
-        print(
-            f"{user['username']} | "
-            f"UID: {user['uid']} | "
-            f"GID: {user['gid']}"
-        )
+        if user["uid"] == "1000":
+            print(
+                f"Utilisateur principal : {user['username']} | "
+                f"UID : {user['uid']} | GID : {user['gid']}"
+            )
+
+    print("\n[+] EXPLORATION DES RÉPERTOIRES")
+
+    list_directory("/home", max_entries=5)
+    list_directory("/root", max_entries=5)
 
     print("\n[+] EXPLORATION DES RÉPERTOIRES")
 
