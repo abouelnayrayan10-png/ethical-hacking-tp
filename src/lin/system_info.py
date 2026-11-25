@@ -1,50 +1,11 @@
-import os
-import stat
+
 import getpass
 import platform
 import socket
+import os
+import stat
 
-def list_directory(path):
-    """Liste récursivement les éléments accessibles d'un dossier."""
 
-    print(f"\n[+] Exploration de : {path}")
-
-    try:
-        for root, directories, files in os.walk(
-            path,
-            onerror=lambda error: print(
-                f"[-] Accès refusé : {error.filename}"
-            ),
-            followlinks=False
-        ):
-            for name in directories + files:
-                full_path = os.path.join(root, name)
-
-                try:
-                    information = os.lstat(full_path)
-
-                    if stat.S_ISLNK(information.st_mode):
-                        file_type = "Lien symbolique"
-                    elif stat.S_ISDIR(information.st_mode):
-                        file_type = "Dossier"
-                    elif stat.S_ISREG(information.st_mode):
-                        file_type = "Fichier"
-                    else:
-                        file_type = "Autre"
-
-                    permissions = stat.filemode(information.st_mode)
-
-                    print(
-                        f"{file_type} | "
-                        f"{permissions} | "
-                        f"{full_path}"
-                    )
-
-                except OSError as error:
-                    print(f"[-] Impossible d'accéder à {full_path} : {error}")
-
-    except OSError as error:
-        print(f"[-] Erreur d'exploration : {error}")
 def get_system_info():
     """Récupère les informations générales du système Linux."""
 
@@ -84,7 +45,62 @@ def get_users_info():
     return users
 
 
+def list_directory(path, max_entries=20):
+    """Liste récursivement les éléments accessibles d'un dossier."""
+
+    print(f"\n[+] Exploration de : {path}")
+
+    count = 0
+
+    try:
+        for root, directories, files in os.walk(
+            path,
+            onerror=lambda error: print(
+                f"[-] Accès refusé : {error.filename}"
+            ),
+            followlinks=False
+        ):
+            for name in directories + files:
+
+                if count >= max_entries:
+                    print(f"[!] Limite de {max_entries} éléments atteinte.")
+                    return
+
+                full_path = os.path.join(root, name)
+
+                try:
+                    information = os.lstat(full_path)
+
+                    if stat.S_ISLNK(information.st_mode):
+                        file_type = "Lien symbolique"
+                    elif stat.S_ISDIR(information.st_mode):
+                        file_type = "Dossier"
+                    elif stat.S_ISREG(information.st_mode):
+                        file_type = "Fichier"
+                    else:
+                        file_type = "Autre"
+
+                    permissions = stat.filemode(information.st_mode)
+
+                    print(
+                        f"{file_type} | "
+                        f"{permissions} | "
+                        f"{full_path}"
+                    )
+
+                    count += 1
+
+                except OSError as error:
+                    print(f"[-] Erreur : {error}")
+
+        print(f"[+] Total affiché : {count} éléments")
+
+    except OSError as error:
+        print(f"[-] Erreur d'exploration : {error}")
+
+
 if __name__ == "__main__":
+
     information = get_system_info()
 
     print("[+] Informations système :")
@@ -105,7 +121,7 @@ if __name__ == "__main__":
             f"Shell : {user['shell']}"
         )
 
-        print("\n[+] Exploration des répertoires Linux :")
+    print("\n[+] Exploration des répertoires Linux :")
 
-    list_directory("/home")
-    list_directory("/root")
+    list_directory("/home", max_entries=20)
+    list_directory("/root", max_entries=20)
