@@ -55,7 +55,9 @@ def list_directory(path, max_entries=5):
     try:
         for root, directories, files in os.walk(
             path,
-            onerror=lambda error: None,
+            onerror=lambda error: print(
+    f"[-] Accès refusé : {error.filename}"
+),
             followlinks=False
         ):
             for name in directories + files:
@@ -112,11 +114,6 @@ if __name__ == "__main__":
                 f"Utilisateur principal : {user['username']} | "
                 f"UID : {user['uid']} | GID : {user['gid']}"
             )
-
-    print("\n[+] EXPLORATION DES RÉPERTOIRES")
-
-    list_directory("/home", max_entries=5)
-    list_directory("/root", max_entries=5)
 
     print("\n[+] EXPLORATION DES RÉPERTOIRES")
 
