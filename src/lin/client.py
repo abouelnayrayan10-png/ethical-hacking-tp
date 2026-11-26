@@ -16,7 +16,7 @@ try:
 except ImportError:
     HAS_PIL = False
 
-SERVER_IP   = "192.168.128.1"   # <-- IP de ton PC Windows
+SERVER_IP   = "192.168.128.129"
 SERVER_PORT = 5000
 RECONNECT_DELAY = 5
 

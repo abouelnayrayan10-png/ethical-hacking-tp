@@ -17,7 +17,7 @@ try:
 except ImportError:
     HAS_PIL = False
 
-SERVER_IP   = "26.134.129.124"
+SERVER_IP = "192.168.128.129"  # C'est bien ça ?
 SERVER_PORT = 5000
 RECONNECT_DELAY = 5
 
